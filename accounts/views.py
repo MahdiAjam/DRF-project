@@ -6,6 +6,9 @@ from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from .utils import CustomAccessToken
+from rest_framework_simplejwt.views import TokenObtainPairView
+from datetime import datetime, timezone
+
 
 class UserRegisterView(APIView):
     def post(self, request):
@@ -40,3 +43,20 @@ class LogoutView(APIView):
         except Exception:
             return Response({'error': 'Something went wrong.'}, status=status.HTTP_400_BAD_REQUEST)
 
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    MAX_TOKENS_PER_USER = 3
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if user.is_authenticated:
+            OutstandingToken.objects.filter(user=user, expires_at__lt=datetime.now(timezone.utc)).delete()
+
+            user_tokens = OutstandingToken.objects.filter(user=user)
+            if user_tokens.count() >= self.MAX_TOKENS_PER_USER:
+                return Response(
+                    {'detail': 'Token limit exceeded. Please log out from another session to create a new token'},
+                    status=status.HTTP_403_FORBIDDEN)
+
+        response = super().post(request, *args, **kwargs)
+        return response
