@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from rest_framework import viewsets
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
 
 
 class UserRegisterView(APIView):
@@ -65,41 +66,37 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return response
 
 
-class UserViewSet(viewsets.ViewSet):
+class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
+    serializer_class = UserSerializer
 
-    # for getting all the resources HTTP METHOD: GET
-    def list(self, request):
-        srz_data = UserSerializer(instance=self.queryset, many=True)
-        return Response(data=srz_data.data, status=status.HTTP_200_OK)
+    # permission_classes = [IsAuthenticated]
 
-    # for getting just one single resource(specific) HTTP METHOD: GET
-    def retrieve(self, request, pk=None):
-        user = get_object_or_404(self.queryset, pk=pk)
-        srz_data = UserSerializer(instance=user)
-        return Response(data=srz_data.data, status=status.HTTP_200_OK)
+    # List --> for getting all the resources HTTP METHOD: GET
+    # Retrieve --> for getting just one single resource(specific) HTTP METHOD: GET
+    # Update --> for updating the whole resource HTTP METHOD: PUT
 
     # for updating a partition of your resource HTTP METHOD: PATCH
     def partial_update(self, request, pk=None):
-        user = get_object_or_404(self.queryset, pk=pk)
+        user = self.get_object()
         # we can not use permissions in to a viewsets so, we have to code it manually
         if user != request.user:
-            return Response({'permission denied': 'you are not the owner'}, status=status.HTTP_403_FORBIDDEN)
-        srz_data = UserSerializer(instance=user, data=request.POST, partial=True)
+            return Response({'permission denied': 'you are not the owner'},
+                            status=status.HTTP_403_FORBIDDEN)
+        srz_data = self.get_serializer(instance=user, data=request.POST, partial=True)
         if srz_data.is_valid():
             srz_data.save()
             return Response(data=srz_data.data, status=status.HTTP_200_OK)
         return Response(data=srz_data.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # for updating the whole resource HTTP METHOD: PUT
-    def update(self, request, pk=None):
-        pass
-
     # for deleting your resource HTTP METHOD: DELETE
     def destroy(self, request, pk=None):
-        user = get_object_or_404(self.queryset, pk=pk)
+        user = self.get_object()
         if user != request.user:
-            return Response({'permission denied': 'you are not the owner'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'permission denied': 'you are not the owner'},
+                            status=status.HTTP_403_FORBIDDEN)
         user.is_active = False
         user.save()
         return Response({'message': 'user deactivated'}, status=status.HTTP_200_OK)
+
+# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTczNzY0NjgzNiwiaWF0IjoxNzM3NTYwNDM2LCJqdGkiOiIyYzFkZDM1Y2Y4NTc0ODUyOTFhZmJjZjZmNzg2OWY4NSIsInVzZXJfaWQiOjd9.mkC1tkC7s9ncGryBIP4gaszP35EbiYhE2gUYOxX944w
