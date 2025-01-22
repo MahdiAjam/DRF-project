@@ -97,4 +97,9 @@ class UserViewSet(viewsets.ViewSet):
 
     # for deleting your resource HTTP METHOD: DELETE
     def destroy(self, request, pk=None):
-        pass
+        user = get_object_or_404(self.queryset, pk=pk)
+        if user != request.user:
+            return Response({'permission denied': 'you are not the owner'}, status=status.HTTP_403_FORBIDDEN)
+        user.is_active = False
+        user.save()
+        return Response({'message': 'user deactivated'}, status=status.HTTP_200_OK)
