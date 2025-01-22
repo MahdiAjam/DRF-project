@@ -8,7 +8,8 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from .utils import CustomAccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from datetime import datetime, timezone
-
+from rest_framework import viewsets
+from django.contrib.auth.models import User
 
 class UserRegisterView(APIView):
     def post(self, request):
@@ -60,3 +61,26 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
         response = super().post(request, *args, **kwargs)
         return response
+
+class UserViewSet(viewsets.ViewSet):
+    queryset = User.objects.all()
+
+    # for getting all the resources HTTP METHOD: GET
+    def list(self, request):
+        pass
+
+    # for getting just one single resource(specific) HTTP METHOD: GET
+    def retrieve(self, request, pk=None):
+        pass
+
+    # for updating a partition of your resource HTTP METHOD: PATCH
+    def partial_update(self, request, pk=None):
+        pass
+
+    # for updating the whole resource HTTP METHOD: PUT
+    def update(self, request, pk=None):
+        pass
+
+    # for deleting your resource HTTP METHOD: DELETE
+    def destroy(self, request, pk=None):
+        pass
