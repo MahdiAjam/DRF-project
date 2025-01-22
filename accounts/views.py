@@ -10,6 +10,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from datetime import datetime, timezone
 from rest_framework import viewsets
 from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
+
 
 class UserRegisterView(APIView):
     def post(self, request):
@@ -73,7 +75,11 @@ class UserViewSet(viewsets.ViewSet):
 
     # for getting just one single resource(specific) HTTP METHOD: GET
     def retrieve(self, request, pk=None):
-        pass
+        user = get_object_or_404(self.queryset, pk=pk)
+        srz_data = UserSerializer(instance=user)
+        return Response(data=srz_data.data, status=status.HTTP_200_OK)
+
+
 
     # for updating a partition of your resource HTTP METHOD: PATCH
     def partial_update(self, request, pk=None):
