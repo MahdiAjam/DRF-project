@@ -64,6 +64,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         response = super().post(request, *args, **kwargs)
         return response
 
+
 class UserViewSet(viewsets.ViewSet):
     queryset = User.objects.all()
 
@@ -72,18 +73,23 @@ class UserViewSet(viewsets.ViewSet):
         srz_data = UserSerializer(instance=self.queryset, many=True)
         return Response(data=srz_data.data, status=status.HTTP_200_OK)
 
-
     # for getting just one single resource(specific) HTTP METHOD: GET
     def retrieve(self, request, pk=None):
         user = get_object_or_404(self.queryset, pk=pk)
         srz_data = UserSerializer(instance=user)
         return Response(data=srz_data.data, status=status.HTTP_200_OK)
 
-
-
     # for updating a partition of your resource HTTP METHOD: PATCH
     def partial_update(self, request, pk=None):
-        pass
+        user = get_object_or_404(self.queryset, pk=pk)
+        # we can not use permissions in to a viewsets so, we have to code it manually
+        if user != request.user:
+            return Response({'permission denied': 'you are not the owner'}, status=status.HTTP_403_FORBIDDEN)
+        srz_data = UserSerializer(instance=user, data=request.POST, partial=True)
+        if srz_data.is_valid():
+            srz_data.save()
+            return Response(data=srz_data.data, status=status.HTTP_200_OK)
+        return Response(data=srz_data.errors, status=status.HTTP_400_BAD_REQUEST)
 
     # for updating the whole resource HTTP METHOD: PUT
     def update(self, request, pk=None):
