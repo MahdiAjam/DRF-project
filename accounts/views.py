@@ -1,5 +1,5 @@
 from rest_framework.views import APIView
-from .serializers import UserRegisterSerializer
+from .serializers import UserRegisterSerializer, UserSerializer
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
@@ -67,7 +67,9 @@ class UserViewSet(viewsets.ViewSet):
 
     # for getting all the resources HTTP METHOD: GET
     def list(self, request):
-        pass
+        srz_data = UserSerializer(instance=self.queryset, many=True)
+        return Response(data=srz_data.data, status=status.HTTP_200_OK)
+
 
     # for getting just one single resource(specific) HTTP METHOD: GET
     def retrieve(self, request, pk=None):
