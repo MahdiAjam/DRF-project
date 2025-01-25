@@ -1,17 +1,17 @@
-from rest_framework.views import APIView
 from .serializers import UserRegisterSerializer, UserSerializer
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
-from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-from .utils import CustomAccessToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from datetime import datetime, timezone
 from rest_framework import viewsets
 from django.contrib.auth.models import User
-from django.shortcuts import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework.response import Response
+from rest_framework import status
+from .models import BlockedJTI
 
 
 class UserRegisterView(APIView):
@@ -23,52 +23,55 @@ class UserRegisterView(APIView):
         return Response(srz_data.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class CustomTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.data.get("refresh")
+
+        if not refresh_token:
+            return Response({'detail': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Decode the refresh token
+            token = RefreshToken(refresh_token)
+            jti = token.get('jti')
+
+            # Check if the refresh token is blacklisted
+            if BlockedJTI.objects.filter(jti=jti).exists():
+                return Response({'detail': 'Refresh token is blacklisted.'}, status=status.HTTP_403_FORBIDDEN)
+
+            # If not blacklisted, proceed with the default behavior
+            return super().post(request, *args, **kwargs)
+
+        except TokenError:
+            return Response({'detail': 'Invalid token.'}, status=status.HTTP_403_FORBIDDEN)
+
+
 class LogoutView(APIView):
     def post(self, request):
         try:
-            refresh_token = request.data.get('refresh')
             access_token = request.data.get('access')
+            refresh_token = request.data.get('refresh')
 
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-
-                user = token['user_id']
-                recent_token = OutstandingToken.objects.filter(user_id=user).order_by('-created_at').first()
-                if recent_token:
-                    BlacklistedToken.objects.create(token=recent_token)
-
+            # Block access token
             if access_token:
-                access = CustomAccessToken(access_token)
-                token_obj = OutstandingToken.objects.filter(token=str(access)).first()
-                if token_obj:
-                    BlacklistedToken.objects.create(token=token_obj)
+                token = AccessToken(access_token)
+                access_jti = token.get('jti')
+                user_id = token.get('user_id')
+                BlockedJTI.objects.create(jti=access_jti, user_id=user_id)
 
-            return Response({'detail': 'Tokens successfully blacklisted.'}, status=status.HTTP_200_OK)
+            # Block refresh token
+            if refresh_token:
+                refresh = RefreshToken(refresh_token)
+                refresh_jti = refresh.get('jti')
+                refresh_user_id = refresh.get('user_id')
+                BlockedJTI.objects.create(jti=refresh_jti, user_id=refresh_user_id)
 
-        except TokenError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Access and refresh tokens successfully blacklisted.'},
+                            status=status.HTTP_200_OK)
 
-        except Exception:
-            return Response({'error': 'Something went wrong.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    MAX_TOKENS_PER_USER = 3
-
-    def post(self, request, *args, **kwargs):
-        user = request.user
-        if user.is_authenticated:
-            OutstandingToken.objects.filter(user=user, expires_at__lt=datetime.now(timezone.utc)).delete()
-
-            user_tokens = OutstandingToken.objects.filter(user=user)
-            if user_tokens.count() >= self.MAX_TOKENS_PER_USER:
-                return Response(
-                    {'detail': 'Token limit exceeded. Please log out from another session to create a new token'},
-                    status=status.HTTP_403_FORBIDDEN)
-
-        response = super().post(request, *args, **kwargs)
-        return response
 
 
 class UserViewSet(viewsets.ModelViewSet):
