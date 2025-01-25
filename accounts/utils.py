@@ -9,7 +9,11 @@ class CustomAccessToken(AccessToken):
         jti = self.payload.get('jti')
         try:
             token_obj = OutstandingToken.objects.get(jti=jti)
-            if BlacklistedToken.objects.filter(token=token_obj).exists():
+
+            if token_obj.blacklistedtoken:
                 raise TokenError('Token is blacklisted.')
+
         except OutstandingToken.DoesNotExist:
+            pass
+        except BlacklistedToken.DoesNotExist:
             pass

@@ -33,6 +33,11 @@ class LogoutView(APIView):
                 token = RefreshToken(refresh_token)
                 token.blacklist()
 
+                user = token['user_id']
+                recent_token = OutstandingToken.objects.filter(user_id=user).order_by('-created_at').first()
+                if recent_token:
+                    BlacklistedToken.objects.create(token=recent_token)
+
             if access_token:
                 access = CustomAccessToken(access_token)
                 token_obj = OutstandingToken.objects.filter(token=str(access)).first()
