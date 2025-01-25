@@ -53,6 +53,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # my middleware
     'accounts.middleware.CheckBlockedTokensMiddleware',
+    'accounts.middleware.CheckBlockedJTIMiddleware',
 ]
 
 ROOT_URLCONF = 'drf.urls'
