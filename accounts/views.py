@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.response import Response
 from rest_framework import status
-from .models import BlockedJTI
+from .models import BlockedJTI, UserSession
 from rest_framework.permissions import IsAuthenticated
 
 
@@ -120,6 +120,64 @@ class ActiveTokensView(APIView):
         ]
 
         return Response({"active_tokens": tokens_data}, status=200)
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+
+        # استخراج اطلاعات توکن
+        if response.status_code == 200:
+            # از serializer داده‌های کاربر را دریافت کنید
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            user = serializer.user  # اینجا کاربر معتبر به دست می‌آید
+            token = RefreshToken(response.data['refresh'])
+
+            # ذخیره اطلاعات نشست
+            user_agent = request.META.get('HTTP_USER_AGENT', '')
+            ip_address = self.get_client_ip(request)
+
+            UserSession.objects.create(
+                user=user,  # اینجا به جای request.user از user معتبر استفاده می‌کنیم
+                jti=token['jti'],
+                ip_address=ip_address,
+                user_agent=user_agent,
+                created_at=datetime.now(timezone.utc),
+                expires_at=datetime.fromtimestamp(token['exp'], timezone.utc)
+            )
+
+        return response
+
+    def get_client_ip(self, request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+
+class UserSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sessions = UserSession.objects.filter(user=request.user, is_active=True)
+
+        # تبدیل اطلاعات نشست به فرمت مناسب
+        sessions_data = [
+            {
+                "jti": session.jti,
+                "ip_address": session.ip_address,
+                "user_agent": session.user_agent,
+                "created_at": session.created_at,
+                "expires_at": session.expires_at,
+                "is_active": session.is_active
+            }
+            for session in sessions
+        ]
+
+        return Response({"sessions": sessions_data}, status=200)
 
 
 class UserViewSet(viewsets.ModelViewSet):
