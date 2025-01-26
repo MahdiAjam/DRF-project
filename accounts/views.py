@@ -12,6 +12,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.response import Response
 from rest_framework import status
 from .models import BlockedJTI
+from rest_framework.permissions import IsAuthenticated
 
 
 class UserRegisterView(APIView):
@@ -72,6 +73,53 @@ class LogoutView(APIView):
         except Exception as e:
             return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
+
+class DeactivateTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        jti_to_deactivate = request.data.get('jti')  # JTI مورد نظر
+        if not jti_to_deactivate:
+            return Response({'detail': 'JTI is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # پیدا کردن توکن مورد نظر
+            token = OutstandingToken.objects.filter(jti=jti_to_deactivate, user=request.user).first()
+
+            if not token:
+                return Response({'detail': 'Token not found or does not belong to the user.'},
+                                status=status.HTTP_404_NOT_FOUND)
+
+            # اضافه کردن به لیست سیاه
+            BlacklistedToken.objects.create(token=token)
+            return Response({'detail': 'Token has been deactivated.'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ActiveTokensView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # گرفتن توکن‌های فعال کاربر
+        active_tokens = OutstandingToken.objects.filter(
+            user=request.user,
+            blacklistedtoken__isnull=True,  # فقط توکن‌های بلاک‌نشده
+            expires_at__gt=datetime.now(timezone.utc)  # فقط توکن‌های منقضی‌نشده
+        )
+
+        # ساختن لیست توکن‌ها برای پاسخ
+        tokens_data = [
+            {
+                "jti": token.jti,
+                "created_at": token.created_at,
+                "expires_at": token.expires_at
+            }
+            for token in active_tokens
+        ]
+
+        return Response({"active_tokens": tokens_data}, status=200)
 
 
 class UserViewSet(viewsets.ModelViewSet):
