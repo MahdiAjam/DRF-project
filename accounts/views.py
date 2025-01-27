@@ -1,3 +1,4 @@
+from drf import settings
 from .serializers import UserRegisterSerializer, UserSerializer
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -13,6 +14,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import BlockedJTI, UserSession
 from rest_framework.permissions import IsAuthenticated
+from drf import settings
+from django.utils.timezone import now
 
 
 class UserRegisterView(APIView):
@@ -26,7 +29,7 @@ class UserRegisterView(APIView):
 
 class CustomTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
-        refresh_token = request.data.get("refresh")
+        refresh_token = request.COOKIES.get("refresh_token")
 
         if not refresh_token:
             return Response({'detail': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -50,8 +53,13 @@ class CustomTokenRefreshView(TokenRefreshView):
 class LogoutView(APIView):
     def post(self, request):
         try:
-            access_token = request.data.get('access')
-            refresh_token = request.data.get('refresh')
+            # Extract the access and refresh tokens from cookies
+            access_token = request.COOKIES.get('access_token')
+            refresh_token = request.COOKIES.get('refresh_token')
+
+            # If no tokens are found, return an error
+            if not access_token and not refresh_token:
+                return Response({'detail': 'No tokens found in cookies.'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Block access token
             if access_token:
@@ -67,8 +75,13 @@ class LogoutView(APIView):
                 refresh_user_id = refresh.get('user_id')
                 BlockedJTI.objects.create(jti=refresh_jti, user_id=refresh_user_id)
 
-            return Response({'detail': 'Access and refresh tokens successfully blacklisted.'},
-                            status=status.HTTP_200_OK)
+            # Clear the tokens from cookies
+            response = Response({'detail': 'Access and refresh tokens successfully blacklisted.'},
+                                status=status.HTTP_200_OK)
+            response.delete_cookie('access_token')
+            response.delete_cookie('refresh_token')
+
+            return response
 
         except Exception as e:
             return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -124,28 +137,59 @@ class ActiveTokensView(APIView):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.user  # Extract the user from the serializer
+
         response = super().post(request, *args, **kwargs)
 
-        # استخراج اطلاعات توکن
         if response.status_code == 200:
-            # از serializer داده‌های کاربر را دریافت کنید
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            user = serializer.user  # اینجا کاربر معتبر به دست می‌آید
-            token = RefreshToken(response.data['refresh'])
+            access_token = response.data.get('access')
+            refresh_token = response.data.get('refresh')
 
-            # ذخیره اطلاعات نشست
-            user_agent = request.META.get('HTTP_USER_AGENT', '')
+            # Set cookies for the tokens
+            response.set_cookie(
+                key='access_token',
+                value=access_token,
+                httponly=True,
+                secure=settings.SECURE_COOKIES,
+                samesite='Strict',
+                max_age=3600,
+                path='/'
+            )
+
+            response.set_cookie(
+                key='refresh_token',
+                value=refresh_token,
+                httponly=True,
+                secure=settings.SECURE_COOKIES,
+                samesite='Strict',
+                max_age=3600 * 24,
+                path='/'
+            )
+
+            # Decode the refresh token to extract session details
+            refresh = RefreshToken(refresh_token)
+            jti = refresh['jti']
+            expires_at = datetime.fromtimestamp(refresh['exp'], timezone.utc)
+
+            # Extract user agent and IP address
+            user_agent = request.META.get('HTTP_USER_AGENT', 'unknown')
             ip_address = self.get_client_ip(request)
 
+            # Create a new user session
             UserSession.objects.create(
-                user=user,  # اینجا به جای request.user از user معتبر استفاده می‌کنیم
-                jti=token['jti'],
+                user=user,  # Use the authenticated user
+                jti=jti,
                 ip_address=ip_address,
                 user_agent=user_agent,
-                created_at=datetime.now(timezone.utc),
-                expires_at=datetime.fromtimestamp(token['exp'], timezone.utc)
+                created_at=now(),
+                expires_at=expires_at,
+                is_active=True
             )
+
+            # Remove token data from response body
+            response.data = {}
 
         return response
 
@@ -162,22 +206,28 @@ class UserSessionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        sessions = UserSession.objects.filter(user=request.user, is_active=True)
+        try:
+            # Retrieve all active sessions for the authenticated user
+            sessions = UserSession.objects.filter(user=request.user, is_active=True)
 
-        # تبدیل اطلاعات نشست به فرمت مناسب
-        sessions_data = [
-            {
-                "jti": session.jti,
-                "ip_address": session.ip_address,
-                "user_agent": session.user_agent,
-                "created_at": session.created_at,
-                "expires_at": session.expires_at,
-                "is_active": session.is_active
-            }
-            for session in sessions
-        ]
+            # Format session data for response
+            sessions_data = [
+                {
+                    "jti": session.jti,
+                    "ip_address": session.ip_address,
+                    "user_agent": session.user_agent,
+                    "created_at": session.created_at,
+                    "expires_at": session.expires_at,
+                    "is_active": session.is_active
+                }
+                for session in sessions
+            ]
 
-        return Response({"sessions": sessions_data}, status=200)
+            return Response({"sessions": sessions_data}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Log the error and return an error response
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserViewSet(viewsets.ModelViewSet):

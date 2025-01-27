@@ -54,6 +54,7 @@ MIDDLEWARE = [
     # my middleware
     'accounts.middleware.CheckBlockedTokensMiddleware',
     'accounts.middleware.CheckBlockedJTIMiddleware',
+    #'accounts.middleware.CheckAccessTokenMiddleware',
 ]
 
 ROOT_URLCONF = 'drf.urls'
@@ -127,6 +128,9 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # REST_FRAMEWORK
+
+SECURE_COOKIES = True  # Set this to True if you're using HTTPS
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

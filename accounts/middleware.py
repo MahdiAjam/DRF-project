@@ -56,3 +56,21 @@ class CheckBlockedJTIMiddleware(MiddlewareMixin):
                 return JsonResponse({'detail': 'Invalid token', 'error': str(e)}, status=403)
 
         return None
+
+
+class CheckAccessTokenMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        access_token = request.COOKIES.get('access_token')
+
+        if not access_token:
+            return JsonResponse({'detail': 'Access token is missing in cookies'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            token = AccessToken(access_token)
+
+            request.user = token.user
+
+        except Exception as e:
+            return JsonResponse({'detail': 'Invalid access token.', 'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+
+        return None
