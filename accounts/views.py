@@ -27,114 +27,6 @@ class UserRegisterView(APIView):
         return Response(srz_data.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CustomTokenRefreshView(TokenRefreshView):
-    def post(self, request, *args, **kwargs):
-        refresh_token = request.COOKIES.get("refresh_token")
-
-        if not refresh_token:
-            return Response({'detail': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            # Decode the refresh token
-            token = RefreshToken(refresh_token)
-            jti = token.get('jti')
-
-            # Check if the refresh token is blacklisted
-            if BlockedJTI.objects.filter(jti=jti).exists():
-                return Response({'detail': 'Refresh token is blacklisted.'}, status=status.HTTP_403_FORBIDDEN)
-
-            # If not blacklisted, proceed with the default behavior
-            return super().post(request, *args, **kwargs)
-
-        except TokenError:
-            return Response({'detail': 'Invalid token.'}, status=status.HTTP_403_FORBIDDEN)
-
-
-class LogoutView(APIView):
-    def post(self, request):
-        try:
-            # Extract the access and refresh tokens from cookies
-            access_token = request.COOKIES.get('access_token')
-            refresh_token = request.COOKIES.get('refresh_token')
-
-            # If no tokens are found, return an error
-            if not access_token and not refresh_token:
-                return Response({'detail': 'No tokens found in cookies.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Block access token
-            if access_token:
-                token = AccessToken(access_token)
-                access_jti = token.get('jti')
-                user_id = token.get('user_id')
-                BlockedJTI.objects.create(jti=access_jti, user_id=user_id)
-
-            # Block refresh token
-            if refresh_token:
-                refresh = RefreshToken(refresh_token)
-                refresh_jti = refresh.get('jti')
-                refresh_user_id = refresh.get('user_id')
-                BlockedJTI.objects.create(jti=refresh_jti, user_id=refresh_user_id)
-
-            # Clear the tokens from cookies
-            response = Response({'detail': 'Access and refresh tokens successfully blacklisted.'},
-                                status=status.HTTP_200_OK)
-            response.delete_cookie('access_token')
-            response.delete_cookie('refresh_token')
-
-            return response
-
-        except Exception as e:
-            return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class DeactivateTokenView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        jti_to_deactivate = request.data.get('jti')  # JTI مورد نظر
-        if not jti_to_deactivate:
-            return Response({'detail': 'JTI is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            # پیدا کردن توکن مورد نظر
-            token = OutstandingToken.objects.filter(jti=jti_to_deactivate, user=request.user).first()
-
-            if not token:
-                return Response({'detail': 'Token not found or does not belong to the user.'},
-                                status=status.HTTP_404_NOT_FOUND)
-
-            # اضافه کردن به لیست سیاه
-            BlacklistedToken.objects.create(token=token)
-            return Response({'detail': 'Token has been deactivated.'}, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-class ActiveTokensView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        # گرفتن توکن‌های فعال کاربر
-        active_tokens = OutstandingToken.objects.filter(
-            user=request.user,
-            blacklistedtoken__isnull=True,  # فقط توکن‌های بلاک‌نشده
-            expires_at__gt=datetime.now(timezone.utc)  # فقط توکن‌های منقضی‌نشده
-        )
-
-        # ساختن لیست توکن‌ها برای پاسخ
-        tokens_data = [
-            {
-                "jti": token.jti,
-                "created_at": token.created_at,
-                "expires_at": token.expires_at
-            }
-            for token in active_tokens
-        ]
-
-        return Response({"active_tokens": tokens_data}, status=200)
-
-
 class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -202,6 +94,121 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return ip
 
 
+class CustomTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get("refresh_token")
+
+        if not refresh_token:
+            return Response({'detail': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Decode the refresh token
+            token = RefreshToken(refresh_token)
+            jti = token.get('jti')
+
+            # Check if the refresh token is blacklisted
+            if BlockedJTI.objects.filter(jti=jti).exists():
+                return Response({'detail': 'Refresh token is blacklisted.'}, status=status.HTTP_403_FORBIDDEN)
+
+            # If not blacklisted, proceed with the default behavior
+            return super().post(request, *args, **kwargs)
+
+        except TokenError:
+            return Response({'detail': 'Invalid token.'}, status=status.HTTP_403_FORBIDDEN)
+
+
+class LogoutView(APIView):
+    def post(self, request):
+        try:
+            # Extract the access and refresh tokens from cookies
+            access_token = request.COOKIES.get('access_token')
+            refresh_token = request.COOKIES.get('refresh_token')
+
+            # If no tokens are found, return an error
+            if not access_token and not refresh_token:
+                return Response({'detail': 'No tokens found in cookies.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            user_id = None
+
+            # Block access token
+            if access_token:
+                token = AccessToken(access_token)
+                access_jti = token.get('jti')
+                user_id = token.get('user_id')
+                BlockedJTI.objects.create(jti=access_jti, user_id=user_id)
+                OutstandingToken.objects.filter(jti=access_jti, user_id=user_id).delete()
+
+            # Block refresh token
+            if refresh_token:
+                refresh = RefreshToken(refresh_token)
+                refresh_jti = refresh.get('jti')
+                refresh_user_id = refresh.get('user_id')
+                BlockedJTI.objects.create(jti=refresh_jti, user_id=refresh_user_id)
+                OutstandingToken.objects.filter(jti=refresh_jti, user_id=user_id).delete()
+
+            if user_id:
+                UserSession.objects.filter(user_id=user_id, is_active=True).update(is_active=False)
+
+            # Clear the tokens from cookies
+            response = Response({'detail': 'Access and refresh tokens successfully blacklisted.'},
+                                status=status.HTTP_200_OK)
+            response.delete_cookie('access_token')
+            response.delete_cookie('refresh_token')
+
+            return response
+
+        except Exception as e:
+            return Response({'error': f'Something went wrong: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DeactivateTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        jti_to_deactivate = request.data.get('jti')  # JTI مورد نظر
+        if not jti_to_deactivate:
+            return Response({'detail': 'JTI is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # پیدا کردن توکن مورد نظر
+            token = OutstandingToken.objects.filter(jti=jti_to_deactivate, user=request.user).first()
+
+            if not token:
+                return Response({'detail': 'Token not found or does not belong to the user.'},
+                                status=status.HTTP_404_NOT_FOUND)
+
+            # اضافه کردن به لیست سیاه
+            BlacklistedToken.objects.create(token=token)
+            return Response({'detail': 'Token has been deactivated.'}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ActiveTokensView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # گرفتن توکن‌های فعال کاربر
+        active_tokens = OutstandingToken.objects.filter(
+            user=request.user,
+            blacklistedtoken__isnull=True,  # فقط توکن‌های بلاک‌نشده
+            expires_at__gt=datetime.now(timezone.utc)  # فقط توکن‌های منقضی‌نشده
+        )
+
+        # ساختن لیست توکن‌ها برای پاسخ
+        tokens_data = [
+            {
+                "jti": token.jti,
+                "created_at": token.created_at,
+                "expires_at": token.expires_at
+            }
+            for token in active_tokens
+        ]
+
+        return Response({"active_tokens": tokens_data}, status=200)
+
+
 class UserSessionsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -262,5 +269,3 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_active = False
         user.save()
         return Response({'message': 'user deactivated'}, status=status.HTTP_200_OK)
-
-# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTczNzY0NjgzNiwiaWF0IjoxNzM3NTYwNDM2LCJqdGkiOiIyYzFkZDM1Y2Y4NTc0ODUyOTFhZmJjZjZmNzg2OWY4NSIsInVzZXJfaWQiOjd9.mkC1tkC7s9ncGryBIP4gaszP35EbiYhE2gUYOxX944w
