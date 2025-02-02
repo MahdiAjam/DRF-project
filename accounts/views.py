@@ -4,7 +4,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.views import TokenObtainPairView
 from datetime import datetime, timezone
 from rest_framework import viewsets
-from django.contrib.auth.models import User
+from .models import User
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.views import TokenRefreshView
