@@ -3,7 +3,7 @@ from django.utils.timezone import now
 from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import UserManager
-
+from django.utils import timezone
 
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(max_length=255, unique=True)
@@ -13,6 +13,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     description = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()
 
