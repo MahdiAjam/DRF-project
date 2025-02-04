@@ -19,6 +19,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # validation based on:
     USERNAME_FIELD = 'phone_number'
+    # for creating superuser
     REQUIRED_FIELDS = ['email', 'full_name']
 
     def __str__(self):

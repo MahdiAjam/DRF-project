@@ -12,17 +12,14 @@ class UserAdmin(BaseUserAdmin):
     filter_horizontal = ('groups', 'user_permissions')
 
     fieldsets = (
-        (None, {'fields': ('email', 'password')}),
+        ('Main', {'fields': ('email', 'password')}),
         ('Personal Info', {'fields': ('full_name', 'profile_image')}),
         ('Permissions', {'fields': ('is_active', 'is_admin', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important Dates', {'fields': ('last_login', 'date_joined')}),
     )
     add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('email', 'full_name', 'password1', 'password2'),
-        }
-         )
+        ('Add User',
+         {'fields': ('phone_number', 'email', 'full_name', 'password1', 'password2', 'is_admin', 'is_active')}),
     )
 
 

@@ -6,7 +6,6 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
 class Home(APIView):
-    permission_classes = [IsAuthenticated,]
 
     def get(self, request):
         persons = User.objects.all()
